@@ -1,0 +1,143 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Catch-all deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Helpers ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function getUserData(uid) {
+      return get(/databases/$(database)/documents/users/$(uid)).data;
+    }
+
+    function isFaculty() {
+      return isSignedIn() && getUserData(request.auth.uid).role == 'faculty';
+    }
+
+    // --- User Rules ---
+    match /users/{userId} {
+      function isValidUser(data) {
+        return data.uid == userId &&
+               data.email is string &&
+               data.role in ['faculty', 'student'] &&
+               data.name is string && data.name.size() <= 100;
+      }
+      
+      allow get: if isSignedIn();
+      allow list: if isSignedIn(); 
+      allow create: if isOwner(userId) && isValidUser(incoming());
+      allow update: if isOwner(userId) && isValidUser(incoming()) && 
+                    incoming().diff(existing()).affectedKeys().hasOnly(['name', 'email']);
+    }
+
+    // --- Project Rules ---
+    match /projects/{projectId} {
+      function isValidProject(data) {
+        return data.id == projectId &&
+               data.name is string && data.name.size() <= 200 &&
+               data.facultyId == request.auth.uid;
+      }
+
+      allow get: if isSignedIn();
+      allow list: if isSignedIn();
+      allow create: if isFaculty() && isValidProject(incoming());
+      allow update: if isFaculty() && existing().facultyId == request.auth.uid && isValidProject(incoming());
+      allow delete: if isFaculty() && existing().facultyId == request.auth.uid;
+    }
+
+    // --- Team Rules ---
+    match /teams/{teamId} {
+      function isValidTeam(data) {
+        return data.id == teamId &&
+               data.name is string && data.name.size() <= 100 &&
+               data.joinCode is string && data.joinCode.size() == 6 &&
+               data.projectId is string &&
+               data.facultyId is string;
+      }
+
+      function isTeamFaculty() {
+        return isFaculty() && existing().facultyId == request.auth.uid;
+      }
+
+      function isTeamStudent() {
+        return isSignedIn() && request.auth.uid in existing().studentIds;
+      }
+
+      allow get: if isSignedIn();
+      allow list: if isSignedIn();
+      allow create: if isFaculty() && isValidTeam(incoming());
+      
+      allow update: if (isValidTeam(incoming()) && (
+        // Faculty update
+        (isTeamFaculty() && incoming().diff(existing()).affectedKeys().hasAll(['studentIds']) == false) ||
+        // Student joining via join code
+        (isSignedIn() && 
+         incoming().diff(existing()).affectedKeys().hasOnly(['studentIds']) &&
+         incoming().joinCode == existing().joinCode &&
+         incoming().studentIds.size() == existing().studentIds.size() + 1 &&
+         request.auth.uid in incoming().studentIds) ||
+        // Faculty updating risks/estimation
+        (isTeamFaculty() && incoming().diff(existing()).affectedKeys().hasAny(['riskLevel', 'riskDescription', 'effortEstimation']))
+      ));
+      
+      allow delete: if isTeamFaculty();
+    }
+
+    // --- Task Rules ---
+    match /tasks/{taskId} {
+      function isValidTask(data) {
+        return data.id == taskId &&
+               data.title is string && data.title.size() <= 200 &&
+               data.status in ['todo', 'in-progress', 'completed'] &&
+               data.teamId is string;
+      }
+
+      function getTeam(teamId) {
+        return get(/databases/$(database)/documents/teams/$(teamId)).data;
+      }
+
+      function isTaskFaculty() {
+        return isFaculty() && getTeam(existing().teamId).facultyId == request.auth.uid;
+      }
+
+      function isTaskStudent() {
+        return isSignedIn() && request.auth.uid in getTeam(existing().teamId).studentIds;
+      }
+
+      allow get: if isSignedIn();
+      allow list: if isSignedIn();
+      
+      allow create: if isFaculty() && isValidTask(incoming());
+      
+      allow update: if (isValidTask(incoming()) && (
+        // Faculty update
+        (isTaskFaculty()) ||
+        // Student status update
+        (isTaskStudent() && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']))
+      ));
+      
+      allow delete: if isTaskFaculty();
+    }
+  }
+}

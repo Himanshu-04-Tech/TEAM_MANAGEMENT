@@ -1,0 +1,85 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile information",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "name": { "type": "string" },
+        "role": { "type": "string", "enum": ["faculty", "student"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "Project": {
+      "title": "Project",
+      "description": "Academic project container",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "facultyId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "name", "facultyId"]
+    },
+    "Team": {
+      "title": "Team",
+      "description": "Student project team",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "projectId": { "type": "string" },
+        "name": { "type": "string" },
+        "joinCode": { "type": "string" },
+        "facultyId": { "type": "string" },
+        "studentIds": { "type": "array", "items": { "type": "string" } },
+        "riskLevel": { "type": "string", "enum": ["low", "medium", "high"] },
+        "riskDescription": { "type": "string" },
+        "effortEstimation": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "projectId", "name", "joinCode", "facultyId"]
+    },
+    "Task": {
+      "title": "Task",
+      "description": "Project task",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "teamId": { "type": "string" },
+        "projectId": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "deadline": { "type": "string", "format": "date-time" },
+        "status": { "type": "string", "enum": ["todo", "in-progress", "completed"] },
+        "assignedTo": { "type": "string" },
+        "effortHours": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "teamId", "projectId", "title", "status"]
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": "User",
+      "description": "User profiles"
+    },
+    "projects/{projectId}": {
+      "schema": "Project",
+      "description": "Academic projects"
+    },
+    "teams/{teamId}": {
+      "schema": "Team",
+      "description": "Project teams"
+    },
+    "tasks/{taskId}": {
+      "schema": "Task",
+      "description": "Project tasks"
+    }
+  }
+}
